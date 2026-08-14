@@ -1,0 +1,109 @@
+{
+  "best_model": "LightGBM",
+  "all_models": {
+    "Random Forest": {
+      "accuracy": 0.9533625730994152,
+      "f1_macro": 0.8260792752209106,
+      "f1_micro": 0.950534966661498
+    },
+    "XGBoost": {
+      "accuracy": 0.9521929824561404,
+      "f1_macro": 0.8674303661918167,
+      "f1_micro": 0.950281283259845
+    },
+    "LightGBM": {
+      "accuracy": 0.9554093567251462,
+      "f1_macro": 0.8681353906868516,
+      "f1_micro": 0.9534280042754619
+    },
+    "CatBoost": {
+      "accuracy": 0.95453216374269,
+      "f1_macro": 0.8491515991418185,
+      "f1_micro": 0.9521022639765901
+    }
+  },
+  "per_nutrient_f1_best": [
+    {
+      "nutrient": "label_iron",
+      "f1": 0.3103448275862069
+    },
+    {
+      "nutrient": "label_vitamin_d",
+      "f1": 0.3806228373702422
+    },
+    {
+      "nutrient": "label_vitamin_b12",
+      "f1": 1.0
+    },
+    {
+      "nutrient": "label_calcium",
+      "f1": 0.9988726042841037
+    },
+    {
+      "nutrient": "label_folate",
+      "f1": 1.0
+    },
+    {
+      "nutrient": "label_vitamin_a",
+      "f1": 0.9970384995064165
+    },
+    {
+      "nutrient": "label_vitamin_c",
+      "f1": 1.0
+    },
+    {
+      "nutrient": "label_magnesium",
+      "f1": 1.0
+    },
+    {
+      "nutrient": "label_zinc",
+      "f1": 1.0
+    },
+    {
+      "nutrient": "label_protein",
+      "f1": 0.994475138121547
+    }
+  ],
+  "roc_auc_per_nutrient": [
+    {
+      "nutrient": "label_iron",
+      "roc_auc": 0.7505325855397591
+    },
+    {
+      "nutrient": "label_vitamin_d",
+      "roc_auc": 0.6658427445131045
+    },
+    {
+      "nutrient": "label_vitamin_b12",
+      "roc_auc": 1.0
+    },
+    {
+      "nutrient": "label_calcium",
+      "roc_auc": 1.0
+    },
+    {
+      "nutrient": "label_folate",
+      "roc_auc": 1.0
+    },
+    {
+      "nutrient": "label_vitamin_a",
+      "roc_auc": 1.0
+    },
+    {
+      "nutrient": "label_vitamin_c",
+      "roc_auc": 0.9999999999999999
+    },
+    {
+      "nutrient": "label_magnesium",
+      "roc_auc": 1.0
+    },
+    {
+      "nutrient": "label_zinc",
+      "roc_auc": 1.0
+    },
+    {
+      "nutrient": "label_protein",
+      "roc_auc": 1.0
+    }
+  ]
+}
