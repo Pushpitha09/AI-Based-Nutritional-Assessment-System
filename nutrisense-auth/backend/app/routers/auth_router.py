@@ -4,7 +4,14 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.user import User
-from app.schemas import SignupRequest, LoginRequest, TokenResponse, UserOut
+from app.schemas import (
+    SignupRequest,
+    LoginRequest,
+    TokenResponse,
+    UserOut,
+    UserUpdateRequest,
+    ChangePasswordRequest,
+)
 from app.auth import hash_password, verify_password, create_access_token, decode_access_token
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -59,3 +66,37 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 @router.get("/me", response_model=UserOut)
 def get_me(current_user: User = Depends(get_current_user)):
     return current_user
+
+
+@router.put("/me", response_model=TokenResponse)
+def update_me(
+    payload: UserUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    existing_user = db.query(User).filter(User.email == payload.email, User.id != current_user.id).first()
+    if existing_user:
+        raise HTTPException(status_code=400, detail="An account with this email already exists")
+
+    current_user.first_name = payload.first_name.strip()
+    current_user.last_name = payload.last_name.strip()
+    current_user.email = payload.email.strip().lower()
+    db.commit()
+    db.refresh(current_user)
+
+    token = create_access_token({"sub": current_user.email})
+    return TokenResponse(access_token=token, user=current_user)
+
+
+@router.post("/password")
+def change_password(
+    payload: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not verify_password(payload.current_password, current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+
+    current_user.hashed_password = hash_password(payload.new_password)
+    db.commit()
+    return {"message": "Password updated successfully"}

@@ -16,11 +16,31 @@ def search_foods(
     db: Session = Depends(get_db),
     _current_user=Depends(get_current_user),
 ):
-    results = (
+    # Pull a wider pool than we'll actually return, then rank it ourselves -
+    # a plain alphabetical DB order means "Bagels, egg" beats "Egg, whole"
+    # just because B < E, even though the second is what someone typing
+    # "egg" almost certainly means.
+    candidates = (
         db.query(FoodItem)
         .filter(FoodItem.name.ilike(f"%{q}%"))
         .order_by(FoodItem.name)
-        .limit(limit)
+        .limit(limit * 20)
         .all()
     )
-    return results
+
+    q_lower = q.lower()
+
+    def relevance_key(food):
+        name_lower = food.name.lower()
+        if name_lower == q_lower:
+            tier = 0                          # exact match
+        elif name_lower.startswith(q_lower):
+            tier = 1                          # starts with the search term
+        elif f", {q_lower}" in name_lower or f" {q_lower}," in name_lower or f" {q_lower} " in name_lower:
+            tier = 2                          # search term is its own "word" in the name
+        else:
+            tier = 3                          # search term buried inside another word/phrase
+        return (tier, len(food.name), name_lower)  # shorter names break ties within a tier
+
+    ranked = sorted(candidates, key=relevance_key)
+    return ranked[:limit]

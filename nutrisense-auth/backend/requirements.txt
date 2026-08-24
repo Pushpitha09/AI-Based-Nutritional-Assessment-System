@@ -6,3 +6,7 @@ bcrypt==4.0.1
 python-jose[cryptography]
 pydantic[email]
 python-multipart
+scikit-learn
+lightgbm
+xgboost
+catboost

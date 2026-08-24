@@ -1,5 +1,9 @@
 import re
 from pydantic import BaseModel, EmailStr, field_validator
+from datetime import datetime
+
+
+from pydantic import BaseModel, EmailStr, field_validator
 
 
 def validate_password_strength(password: str) -> str:
@@ -65,6 +69,30 @@ class TokenResponse(BaseModel):
     user: UserOut
 
 
+class UserUpdateRequest(BaseModel):
+    first_name: str
+    last_name: str
+    email: EmailStr
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+    confirm_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def password_strength(cls, v):
+        return validate_password_strength(v)
+
+    @field_validator("confirm_password")
+    @classmethod
+    def passwords_match(cls, v, info):
+        if "new_password" in info.data and v != info.data["new_password"]:
+            raise ValueError("Passwords do not match")
+        return v
+
+
 # --- Onboarding / health profile ---
 
 class OnboardingRequest(BaseModel):
@@ -125,6 +153,39 @@ class LabResultOut(BaseModel):
         from_attributes = True
 
 
+# --- Assessment ---
+
+class RiskItemOut(BaseModel):
+    label: str
+    nutrient: str
+    probability: float
+    predicted_deficient: bool
+    ui_percent: int
+    ui_level: str
+    tag: str | None
+
+
+class RecommendedFoodOut(BaseModel):
+    name: str
+    amount: float
+
+
+class AssessmentOut(BaseModel):
+    overall_score: float
+    diary_days_used: int
+    risks: list[RiskItemOut]
+    features: dict
+    recommendations: dict[str, list[RecommendedFoodOut]] = {}
+
+class AssessmentHistoryItem(BaseModel):
+    id: int
+    overall_score: float
+    diary_days_used: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
 # --- Food search ---
 
 class FoodItemOut(BaseModel):
@@ -161,5 +222,15 @@ class DiaryEntryOut(BaseModel):
     meal: str
     portion_grams: float
     food_name: str
+
     calories_kcal: float
+    protein_g: float
     iron_mg: float
+    calcium_mg: float
+    vitamin_d_mcg: float
+    vitamin_b12_mcg: float
+    folate_mcg: float
+    vitamin_a_mcg: float
+    vitamin_c_mg: float
+    magnesium_mg: float
+    zinc_mg: float

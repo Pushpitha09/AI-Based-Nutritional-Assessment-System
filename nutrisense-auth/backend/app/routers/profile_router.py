@@ -6,6 +6,7 @@ from app.models.health_profile import HealthProfile
 from app.models.user import User
 from app.schemas import OnboardingRequest, HealthProfileOut
 from app.routers.auth_router import get_current_user
+from app.services.food_tags import normalize_restrictions
 
 router = APIRouter(prefix="/profile", tags=["profile"])
 
@@ -18,7 +19,7 @@ def submit_onboarding(
 ):
     existing = db.query(HealthProfile).filter(HealthProfile.user_id == current_user.id).first()
 
-    restrictions_str = ",".join(payload.dietary_restrictions)
+    restrictions_str = ",".join(normalize_restrictions(payload.dietary_restrictions))
 
     if existing:
         existing.age = payload.age
@@ -52,4 +53,40 @@ def get_my_profile(current_user: User = Depends(get_current_user), db: Session =
     profile = db.query(HealthProfile).filter(HealthProfile.user_id == current_user.id).first()
     if not profile:
         raise HTTPException(status_code=404, detail="No health profile found for this user yet")
+    return profile
+
+
+@router.put("/me", response_model=HealthProfileOut)
+def update_my_profile(
+    payload: OnboardingRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    existing = db.query(HealthProfile).filter(HealthProfile.user_id == current_user.id).first()
+    restrictions_str = ",".join(normalize_restrictions(payload.dietary_restrictions))
+
+    if existing:
+        existing.age = payload.age
+        existing.gender = payload.gender
+        existing.height_cm = payload.height_cm
+        existing.weight_kg = payload.weight_kg
+        existing.activity_level = payload.activity_level
+        existing.health_goal = payload.health_goal
+        existing.dietary_restrictions = restrictions_str
+        profile = existing
+    else:
+        profile = HealthProfile(
+            user_id=current_user.id,
+            age=payload.age,
+            gender=payload.gender,
+            height_cm=payload.height_cm,
+            weight_kg=payload.weight_kg,
+            activity_level=payload.activity_level,
+            health_goal=payload.health_goal,
+            dietary_restrictions=restrictions_str,
+        )
+        db.add(profile)
+
+    db.commit()
+    db.refresh(profile)
     return profile

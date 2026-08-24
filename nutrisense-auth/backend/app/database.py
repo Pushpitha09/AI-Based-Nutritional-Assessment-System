@@ -1,9 +1,12 @@
+import os
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-# SQLite database file - this will be created inside the backend folder
-# Per requirement, this .db file IS committed to GitHub (not gitignored)
-SQLALCHEMY_DATABASE_URL = "sqlite:///./nutrisense.db"
+# Use the isolated food database by default. Override it with
+# NUTRISENSE_DATABASE_FILE when another local database is needed.
+DATABASE_FILE = os.getenv("NUTRISENSE_DATABASE_FILE", "nutrisense_fresh.db")
+SQLALCHEMY_DATABASE_URL = f"sqlite:///./{DATABASE_FILE}"
 
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,

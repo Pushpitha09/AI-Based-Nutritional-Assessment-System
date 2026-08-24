@@ -1,0 +1,32 @@
+{
+  "model_type": "RandomForestClassifier",
+  "features": [
+    "gender",
+    "age_years",
+    "calories_kcal",
+    "protein_g",
+    "iron_mg",
+    "calcium_mg",
+    "vitamin_d_mcg",
+    "vitamin_b12_mcg",
+    "folate_mcg",
+    "vitamin_a_mcg",
+    "vitamin_c_mg",
+    "magnesium_mg",
+    "zinc_mg"
+  ],
+  "labels": [
+    "label_iron",
+    "label_vitamin_d",
+    "label_vitamin_b12",
+    "label_calcium",
+    "label_folate",
+    "label_vitamin_a",
+    "label_vitamin_c",
+    "label_magnesium",
+    "label_zinc",
+    "label_protein"
+  ],
+  "n_estimators": 200,
+  "random_state": 42
+}

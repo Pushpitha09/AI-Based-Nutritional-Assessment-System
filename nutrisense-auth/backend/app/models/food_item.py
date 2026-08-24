@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Float, String
+from sqlalchemy import Column, Integer, Float, String, Boolean
 from app.database import Base
 
 
@@ -25,3 +25,11 @@ class FoodItem(Base):
     vitamin_c_mg = Column(Float, default=0)
     magnesium_mg = Column(Float, default=0)
     zinc_mg = Column(Float, default=0)
+
+    # Dietary tags - keyword-classified from the food name at import time.
+    # Used to filter recommendations by the user's dietary restrictions.
+    is_vegetarian = Column(Boolean, default=True)
+    is_vegan = Column(Boolean, default=True)
+    contains_dairy = Column(Boolean, default=False)
+    contains_gluten = Column(Boolean, default=False)
+    contains_nuts = Column(Boolean, default=False)

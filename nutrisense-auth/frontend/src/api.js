@@ -46,7 +46,56 @@ export async function getMe(token) {
   return handleResponse(res);
 }
 
+export async function updateProfile(token, { firstName, lastName, email }) {
+  const res = await fetch(`${API_BASE_URL}/auth/me`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+    body: JSON.stringify({
+      first_name: firstName,
+      last_name: lastName,
+      email,
+    }),
+  });
+  return handleResponse(res);
+}
+
+export async function changePassword(token, { currentPassword, newPassword, confirmPassword }) {
+  const res = await fetch(`${API_BASE_URL}/auth/password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+    body: JSON.stringify({
+      current_password: currentPassword,
+      new_password: newPassword,
+      confirm_password: confirmPassword,
+    }),
+  });
+  return handleResponse(res);
+}
+
 // --- Onboarding / health profile ---
+
+export async function getHealthProfile(token) {
+  const res = await fetch(`${API_BASE_URL}/profile/me`, { headers: authHeaders(token) });
+  if (res.status === 404) return null;
+  return handleResponse(res);
+}
+
+export async function saveHealthProfile(token, { age, gender, heightCm, weightKg, activityLevel, healthGoal, dietaryRestrictions }) {
+  const res = await fetch(`${API_BASE_URL}/profile/me`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+    body: JSON.stringify({
+      age,
+      gender,
+      height_cm: heightCm,
+      weight_kg: weightKg,
+      activity_level: activityLevel,
+      health_goal: healthGoal,
+      dietary_restrictions: dietaryRestrictions,
+    }),
+  });
+  return handleResponse(res);
+}
 
 export async function submitOnboarding(token, { age, gender, heightCm, weightKg, activityLevel, healthGoal, dietaryRestrictions }) {
   const res = await fetch(`${API_BASE_URL}/profile/onboarding`, {
@@ -84,6 +133,48 @@ export async function saveLabResults(token, { hemoglobin, serumVitaminD, ferriti
 
 export async function getMyLabResults(token) {
   const res = await fetch(`${API_BASE_URL}/labs/me`, { headers: authHeaders(token) });
+  return handleResponse(res);
+}
+
+// --- Assessment ---
+
+export async function runAssessment(token) {
+  const res = await fetch(`${API_BASE_URL}/assess`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+  return handleResponse(res);
+}
+
+export async function getLatestAssessment(token) {
+  const res = await fetch(`${API_BASE_URL}/assess/latest`, { headers: authHeaders(token) });
+  if (res.status === 404) return null;
+  return handleResponse(res);
+}
+
+export async function getAssessmentHistory(token) {
+  const res = await fetch(
+    `${API_BASE_URL}/assess/history`,
+    {
+      headers: authHeaders(token),
+    }
+  );
+
+  return handleResponse(res);
+}
+// --- Meal plan ---
+
+export async function getLatestMealPlan(token) {
+  const res = await fetch(`${API_BASE_URL}/meal-plan/latest`, { headers: authHeaders(token) });
+  if (res.status === 404) return null;
+  return handleResponse(res);
+}
+
+export async function regenerateMealPlan(token) {
+  const res = await fetch(`${API_BASE_URL}/meal-plan/regenerate`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
   return handleResponse(res);
 }
 
