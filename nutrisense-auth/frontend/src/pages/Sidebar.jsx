@@ -1,6 +1,8 @@
+import { useState } from "react";
 import {
   Link,
-  useLocation, useNavigate
+  useLocation,
+  useNavigate,
 } from "react-router-dom";
 
 import {
@@ -13,6 +15,8 @@ import {
   TrendingUp,
   UserRound,
   LogOut,
+  Menu,
+  X,
 } from "lucide-react";
 
 import { useAuth } from "../AuthContext";
@@ -60,70 +64,99 @@ export default function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
 
+  const [menuOpen, setMenuOpen] = useState(false);
+
   function handleLogout() {
-  logOut();
-  navigate("/");
-}
+    setMenuOpen(false);
+    logOut();
+    navigate("/");
+  }
+
+  function closeMenu() {
+    setMenuOpen(false);
+  }
 
   return (
-    <aside className="dash-sidebar">
-      <div>
-        <div className="brand-mark small on-sidebar">
-          <Leaf size={19} strokeWidth={2.2} />
-          nutri<span>sense</span>
-        </div>
+    <>
+      {/* Mobile menu button */}
+      <button
+        className="mobile-menu-btn"
+        onClick={() => setMenuOpen(true)}
+        aria-label="Open menu"
+      >
+        <Menu size={24} />
+      </button>
 
-        <p className="sidebar-username">
-          {user?.first_name} {user?.last_name}
-        </p>
+      {/* Dark overlay on mobile */}
+      {menuOpen && (
+        <div
+          className="sidebar-overlay"
+          onClick={closeMenu}
+        />
+      )}
 
-        <nav className="sidebar-nav">
-          {navItems.map(
-            ({ icon: Icon, label, path }) => {
-              if (!path) {
+      <aside
+        className={
+          menuOpen
+            ? "dash-sidebar mobile-open"
+            : "dash-sidebar"
+        }
+      >
+        <div>
+          {/* Mobile close button */}
+          <div className="sidebar-top-row">
+            <div className="brand-mark small on-sidebar">
+              <Leaf size={19} strokeWidth={2.2} />
+              nutri<span>sense</span>
+            </div>
+
+            <button
+              className="sidebar-close-btn"
+              onClick={closeMenu}
+              aria-label="Close menu"
+            >
+              <X size={22} />
+            </button>
+          </div>
+
+          <p className="sidebar-username">
+            {user?.first_name} {user?.last_name}
+          </p>
+
+          <nav className="sidebar-nav">
+            {navItems.map(
+              ({ icon: Icon, label, path }) => {
+                const isActive =
+                  location.pathname === path;
+
                 return (
-                  <div
+                  <Link
                     key={label}
-                    className="sidebar-link disabled"
+                    to={path}
+                    onClick={closeMenu}
+                    className={
+                      isActive
+                        ? "sidebar-link active"
+                        : "sidebar-link"
+                    }
                   >
                     <Icon size={17} />
                     {label}
-                    <span className="soon-tag">
-                      soon
-                    </span>
-                  </div>
+                  </Link>
                 );
               }
+            )}
+          </nav>
+        </div>
 
-              const isActive =
-                location.pathname === path;
-
-              return (
-                <Link
-                  key={label}
-                  to={path}
-                  className={
-                    isActive
-                      ? "sidebar-link active"
-                      : "sidebar-link"
-                  }
-                >
-                  <Icon size={17} />
-                  {label}
-                </Link>
-              );
-            }
-          )}
-        </nav>
-      </div>
-
-      <button
-        className="btn-logout"
-        onClick={handleLogout}
-      >
-        <LogOut size={15} />
-        Sign out
-      </button>
-    </aside>
+        <button
+          className="btn-logout"
+          onClick={handleLogout}
+        >
+          <LogOut size={15} />
+          Sign out
+        </button>
+      </aside>
+    </>
   );
 }

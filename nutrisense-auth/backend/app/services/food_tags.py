@@ -55,6 +55,8 @@ MEAT_KEYWORDS = [
     "mackerel",
     "trout",
     "herring",
+    "cuttlefish",
+    "mollusks",
 ]
 
 
