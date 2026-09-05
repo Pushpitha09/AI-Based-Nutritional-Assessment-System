@@ -21,6 +21,7 @@ assessment probabilities, or wellness score calculation.
 from datetime import date, timedelta
 from pathlib import Path
 import json
+import re
 
 import joblib
 import pandas as pd
@@ -40,22 +41,9 @@ from app.services.food_tags import (
 )
 
 
-# ============================================================
-# PATHS
-# ============================================================
-
-ARTIFACTS_DIR = (
-    Path(__file__).parent.parent
-    / "ml_artifacts"
-)
-
-
-# ============================================================
-# ASSESSMENT SETTINGS
-# ============================================================
+ARTIFACTS_DIR = Path(__file__).parent.parent / "ml_artifacts"
 
 MIN_DIARY_DAYS = 3
-
 DEFAULT_WINDOW_DAYS = 7
 
 REQUIRED_MEALS = {
@@ -65,10 +53,6 @@ REQUIRED_MEALS = {
     "dinner",
 }
 
-
-# ============================================================
-# DIARY NUTRIENT COLUMNS
-# ============================================================
 
 DIARY_NUTRIENT_COLS = [
     "calories_kcal",
@@ -85,13 +69,6 @@ DIARY_NUTRIENT_COLS = [
 ]
 
 
-# ============================================================
-# UI INTAKE THRESHOLDS
-#
-# These values are ONLY used for the "Low X intake" tag.
-# They are NOT used by the ML model.
-# ============================================================
-
 RDA_THRESHOLDS = {
     "iron_mg": 8,
     "vitamin_d_mcg": 15,
@@ -105,10 +82,6 @@ RDA_THRESHOLDS = {
     "protein_g": 50,
 }
 
-
-# ============================================================
-# MODEL LABEL -> DATABASE NUTRIENT COLUMN
-# ============================================================
 
 LABEL_TO_NUTRIENT_COL = {
     "label_iron": "iron_mg",
@@ -124,43 +97,235 @@ LABEL_TO_NUTRIENT_COL = {
 }
 
 
-# ============================================================
-# RECOMMENDATION SETTINGS
-# ============================================================
-
 RECOMMENDATION_THRESHOLD = 0.45
-
 RECOMMENDATIONS_PER_NUTRIENT = 6
 
 
-# ============================================================
-# DATA SOURCE PRIORITY
-#
-# Used only as a tie-breaker for food recommendations.
-# Does NOT affect assessment.
-# ============================================================
+# ================================================================
+# Recommendation configuration
+# ================================================================
 
-SOURCE_PRIORITY = {
-    "seed": 0,
-    "ifct": 1,
-    "usda": 2,
-    "usda_sr_legacy": 2,
+# The IFCT micronutrient values in the current database use a
+# different scale from the USDA-style entries.
+#
+# This conversion is used ONLY for recommendation ranking/display.
+# It is NOT used in diary calculations or ML predictions.
+IFCT_MICRONUTRIENT_COLUMNS = {
+    "iron_mg",
+    "calcium_mg",
+    "vitamin_d_mcg",
+    "vitamin_b12_mcg",
+    "folate_mcg",
+    "vitamin_a_mcg",
+    "vitamin_c_mg",
+    "magnesium_mg",
+    "zinc_mg",
 }
 
 
-# ============================================================
-# UNSUITABLE FOOD TERMS
-#
-# These foods should not normally appear as recommendations.
-# ============================================================
+REFERENCE_VALUES = {
+    "iron_mg": 18,
+    "vitamin_d_mcg": 20,
+    "vitamin_b12_mcg": 4,
+    "calcium_mg": 1000,
+    "folate_mcg": 400,
+    "vitamin_a_mcg": 900,
+    "vitamin_c_mg": 90,
+    "magnesium_mg": 420,
+    "zinc_mg": 11,
+    "protein_g": 50,
+}
 
+
+# These keywords ONLY classify existing database foods.
+# They do not add or create foods.
+PRACTICAL_FOOD_KEYWORDS = {
+
+    "iron_mg": [
+        "lentil",
+        "dal",
+        "chickpea",
+        "chana",
+        "rajma",
+        "kidney bean",
+        "black gram",
+        "urad",
+        "green gram",
+        "moong",
+        "mung",
+        "soybean",
+        "tofu",
+        "spinach",
+        "amaranth",
+        "sesame",
+        "pumpkin seed",
+        "egg",
+        "sardine",
+        "tuna",
+        "mackerel",
+    ],
+
+    "calcium_mg": [
+        "ragi",
+        "finger millet",
+        "tofu",
+        "sesame",
+        "amaranth",
+        "spinach",
+        "soybean",
+        "soymilk",
+        "soy milk",
+        "fortified cereal",
+        "fortified soy milk",
+        "milk",
+        "curd",
+        "yogurt",
+        "yoghurt",
+        "paneer",
+        "cheese",
+    ],
+
+    "vitamin_d_mcg": [
+        "egg",
+        "egg yolk",
+        "salmon",
+        "sardine",
+        "mackerel",
+        "trout",
+        "tuna",
+        "fish",
+        "fortified cereal",
+        "fortified milk",
+        "fortified soy milk",
+        "soymilk",
+        "soy milk",
+        "mushroom",
+    ],
+
+    "vitamin_b12_mcg": [
+        "egg",
+        "milk",
+        "curd",
+        "yogurt",
+        "yoghurt",
+        "paneer",
+        "cheese",
+        "soymilk",
+        "soy milk",
+        "fortified cereal",
+        "fortified",
+        "nutritional yeast",
+    ],
+
+    "folate_mcg": [
+        "spinach",
+        "amaranth",
+        "drumstick",
+        "lentil",
+        "dal",
+        "chickpea",
+        "chana",
+        "green gram",
+        "moong",
+        "peas",
+        "bean",
+        "orange",
+        "papaya",
+        "guava",
+        "avocado",
+    ],
+
+    "vitamin_a_mcg": [
+        "carrot",
+        "spinach",
+        "amaranth",
+        "sweet potato",
+        "pumpkin",
+        "papaya",
+        "mango",
+        "tomato",
+        "capsicum",
+        "bell pepper",
+        "egg",
+    ],
+
+    "vitamin_c_mg": [
+        "guava",
+        "amla",
+        "gooseberry",
+        "orange",
+        "lemon",
+        "papaya",
+        "tomato",
+        "capsicum",
+        "bell pepper",
+        "broccoli",
+        "kiwi",
+        "strawberry",
+    ],
+
+    "magnesium_mg": [
+        "ragi",
+        "finger millet",
+        "sesame",
+        "pumpkin seed",
+        "almond",
+        "cashew",
+        "walnut",
+        "chickpea",
+        "chana",
+        "lentil",
+        "dal",
+        "spinach",
+        "oats",
+        "soybean",
+        "tofu",
+    ],
+
+    "zinc_mg": [
+        "sesame",
+        "pumpkin seed",
+        "chickpea",
+        "chana",
+        "lentil",
+        "dal",
+        "soybean",
+        "tofu",
+        "paneer",
+        "egg",
+        "oats",
+        "cashew",
+        "almond",
+    ],
+
+    "protein_g": [
+        "egg",
+        "milk",
+        "curd",
+        "yogurt",
+        "yoghurt",
+        "paneer",
+        "tofu",
+        "soybean",
+        "lentil",
+        "dal",
+        "chickpea",
+        "chana",
+        "rajma",
+        "kidney bean",
+        "green gram",
+        "moong",
+        "peas",
+    ],
+}
+
+
+# Foods that shouldn't normally appear as everyday
+# NutriSense recommendations.
 UNSUITABLE_RECOMMENDATION_TERMS = (
-
-    # Raw foods
-    ", raw",
     " raw",
-
-    # Organs
+    ", raw",
+    "raw,",
     "liver",
     "kidney",
     "giblet",
@@ -169,28 +334,20 @@ UNSUITABLE_RECOMMENDATION_TERMS = (
     "tongue",
     "tripe",
     "brain",
-
-    # Liver products
     "liverwurst",
-    "liver sausage",
     "braunschweiger",
+    "liver sausage",
     "liver cheese",
     "pate",
-
-    # Powders / mixes
     "powder",
     "dry mix",
     "unprepared",
     "not reconstituted",
-
-    # Spices / herbs
     "spices,",
     "paprika",
     "marjoram",
     "spearmint",
     "chives",
-
-    # Additives
     "baking powder",
     "leavening agent",
     "salt substitute",
@@ -200,46 +357,40 @@ UNSUITABLE_RECOMMENDATION_TERMS = (
     "flavoring",
     "flavouring",
     "yeast extract",
-
-    # Infant foods
     "babyfood",
     "baby food",
     "infant formula",
     "toddler",
-
-    # Processed / unusual foods
     "candies",
+    "candy",
     "pie",
+    "pudding",
     "puddings",
     "salad dressing",
     "refrigerated dough",
-
-    # Supplements
     "tablet",
     "supplement",
-
-    # Other unsuitable entries
     "food distribution program",
     "artificial flavor",
     "artificial flavour",
-    "whey, acid",
     "margarine",
-
-    # Unusual animal foods
-    "seal",
-    "whale",
+    "whey, acid",
+    "caramel-coated",
+    "confection",
+    "heavy syrup",
+    "syrup, solids",
 )
 
 
-def _is_unsuitable_recommendation_food(
-    name: str,
-) -> bool:
-    """
-    Returns True when a food should not be shown
-    as a normal meal recommendation.
-    """
+# ================================================================
+# Food filtering helpers
+# ================================================================
 
-    name_lower = name.casefold()
+def _is_unsuitable_recommendation_food(name: str) -> bool:
+
+    name_lower = (
+        name or ""
+    ).casefold()
 
     return any(
         term in name_lower
@@ -247,144 +398,396 @@ def _is_unsuitable_recommendation_food(
     )
 
 
-# ============================================================
-# FOOD CATEGORY PREFERENCE
-#
-# Gives practical everyday foods a bonus.
-# This does NOT change ML assessment.
-# ============================================================
+def _keyword_match_score(
+    name: str,
+    nutrient_col: str,
+) -> int:
+    """
+    Counts how strongly a food matches practical foods
+    for a particular nutrient.
+    """
+
+    text = (
+        name or ""
+    ).casefold()
+
+    keywords = PRACTICAL_FOOD_KEYWORDS.get(
+        nutrient_col,
+        [],
+    )
+
+    score = 0
+
+    for keyword in keywords:
+
+        pattern = (
+            r"\b"
+            + re.escape(
+                keyword.casefold()
+            )
+            + r"\b"
+        )
+
+        if re.search(
+            pattern,
+            text,
+        ):
+            score += 1
+
+    return score
+
+
+def _recommendation_family(
+    name: str,
+) -> str:
+    """
+    Groups database records into practical food families.
+
+    Example:
+
+        SILK Vanilla, soymilk
+        SILK Chocolate, soymilk
+        SILK Unsweetened, soymilk
+
+    all become:
+
+        soy milk
+
+    Likewise, different tofu products become:
+
+        tofu
+    """
+
+    text = (
+        name or ""
+    ).casefold()
+
+    family_rules = {
+
+        "soy milk": (
+            "soymilk",
+            "soy milk",
+        ),
+
+        "tofu": (
+            "tofu",
+        ),
+
+        "yogurt": (
+            "yogurt",
+            "yoghurt",
+        ),
+
+        "curd": (
+            "curd",
+        ),
+
+        "milk": (
+            "milk",
+        ),
+
+        "paneer": (
+            "paneer",
+        ),
+
+        "cheese": (
+            "cheese",
+        ),
+
+        "lentils": (
+            "lentil",
+            "dal",
+        ),
+
+        "chickpeas": (
+            "chickpea",
+            "chana",
+            "garbanzo",
+        ),
+
+        "beans": (
+            "rajma",
+            "kidney bean",
+            "black bean",
+            "green bean",
+            "beans",
+        ),
+
+        "green gram": (
+            "green gram",
+            "moong",
+            "mung",
+        ),
+
+        "spinach": (
+            "spinach",
+        ),
+
+        "amaranth": (
+            "amaranth",
+        ),
+
+        "carrot": (
+            "carrot",
+        ),
+
+        "papaya": (
+            "papaya",
+        ),
+
+        "mango": (
+            "mango",
+        ),
+
+        "guava": (
+            "guava",
+        ),
+
+        "orange": (
+            "orange",
+        ),
+
+        "tomato": (
+            "tomato",
+        ),
+
+        "ragi": (
+            "ragi",
+            "finger millet",
+        ),
+
+        "sesame": (
+            "sesame",
+        ),
+
+        "pumpkin seeds": (
+            "pumpkin seed",
+        ),
+
+        "almond": (
+            "almond",
+        ),
+
+        "cashew": (
+            "cashew",
+        ),
+
+        "walnut": (
+            "walnut",
+        ),
+
+        "oats": (
+            "oat",
+            "oatmeal",
+        ),
+
+        "egg": (
+            "egg",
+        ),
+
+        "sardine": (
+            "sardine",
+        ),
+
+        "salmon": (
+            "salmon",
+        ),
+
+        "mackerel": (
+            "mackerel",
+        ),
+
+        "trout": (
+            "trout",
+        ),
+
+        "tuna": (
+            "tuna",
+        ),
+
+        "sweet potato": (
+            "sweet potato",
+        ),
+
+        "pumpkin": (
+            "pumpkin",
+        ),
+
+        "peas": (
+            "peas",
+        ),
+
+        "broccoli": (
+            "broccoli",
+        ),
+
+        "capsicum": (
+            "capsicum",
+            "bell pepper",
+        ),
+
+        "mushroom": (
+            "mushroom",
+        ),
+
+        "fortified cereal": (
+            "fortified cereal",
+            "breakfast cereal",
+        ),
+    }
+
+    for family, keywords in family_rules.items():
+
+        for keyword in keywords:
+
+            if keyword in text:
+                return family
+
+    # Fallback for foods that aren't covered above.
+    primary = (
+        text
+        .split(",", 1)[0]
+        .strip()
+    )
+
+    return re.sub(
+        r"[^a-z0-9]+",
+        " ",
+        primary,
+    ).strip()
+
 
 def _food_category_score(
     name: str,
 ) -> int:
+    """
+    General practicality score.
+    """
 
-    name_lower = name.casefold()
+    text = (
+        name or ""
+    ).casefold()
 
-    scores = {
+    very_practical = (
+        "ragi",
+        "finger millet",
+        "lentil",
+        "dal",
+        "chickpea",
+        "chana",
+        "rajma",
+        "kidney bean",
+        "green gram",
+        "moong",
+        "spinach",
+        "amaranth",
+        "carrot",
+        "tomato",
+        "orange",
+        "guava",
+        "papaya",
+        "mango",
+        "banana",
+        "apple",
+        "tofu",
+        "soybean",
+        "sesame",
+        "pumpkin seed",
+        "oats",
+        "egg",
+        "milk",
+        "curd",
+        "yogurt",
+        "paneer",
+    )
 
-        # Everyday practical foods
-        5: (
-            "milk",
-            "curd",
-            "yogurt",
-            "yoghurt",
-            "paneer",
-            "tofu",
-            "egg",
-            "spinach",
-            "broccoli",
-            "carrot",
-            "tomato",
-            "orange",
-            "guava",
-            "papaya",
-            "mango",
-            "banana",
-            "apple",
-            "lentil",
-            "dal",
-            "chickpea",
-            "chana",
-            "bean",
-            "peas",
-            "ragi",
-            "finger millet",
-            "sesame",
-            "almond",
-            "cashew",
-            "walnut",
-            "flaxseed",
-            "chia",
-            "pumpkin seed",
-        ),
+    practical = (
+        "peas",
+        "beans",
+        "broccoli",
+        "capsicum",
+        "sweet potato",
+        "pumpkin",
+        "almond",
+        "cashew",
+        "walnut",
+        "chia",
+        "flaxseed",
+        "fortified cereal",
+        "soy milk",
+        "soymilk",
+    )
 
-        # Common nutritious foods
-        4: (
-            "cheese",
-            "chicken",
-            "salmon",
-            "tuna",
-            "sardine",
-            "mackerel",
-            "trout",
-            "soy",
-            "soybean",
-            "oats",
-            "brown rice",
-            "sweet potato",
-            "capsicum",
-            "drumstick",
-            "agathi",
-            "fortified cereal",
-            "breakfast cereal",
-        ),
-
-        # Valid but less common
-        3: (
-            "beef",
-            "lamb",
-            "pork",
-            "clam",
-            "mollusk",
-            "oyster",
-            "mussel",
-            "shrimp",
-            "prawn",
-            "crab",
-        ),
-    }
-
-    for score in sorted(
-        scores.keys(),
-        reverse=True,
+    if any(
+        word in text
+        for word in very_practical
     ):
+        return 3
 
-        if any(
-            keyword in name_lower
-            for keyword in scores[score]
-        ):
-            return score
+    if any(
+        word in text
+        for word in practical
+    ):
+        return 2
 
-    return 2
+    return 0
 
 
-# ============================================================
-# NUTRIENT SCORE
-#
-# Converts nutrient value into a capped score.
-#
-# This is ONLY for recommendation ranking.
-# ============================================================
+# ================================================================
+# Recommendation nutrient handling
+# ================================================================
+
+def _recommendation_nutrient_value(
+    food: FoodItem,
+    nutrient_col: str,
+) -> float:
+    """
+    Gets a source-aware nutrient value for recommendations.
+
+    IMPORTANT:
+    This is ONLY for recommendation ranking/display.
+    It is NOT used in the ML assessment.
+    """
+
+    value = float(
+        getattr(
+            food,
+            nutrient_col,
+            0,
+        )
+        or 0
+    )
+
+    value = max(
+        value,
+        0,
+    )
+
+    source = str(
+        getattr(
+            food,
+            "source",
+            "",
+        )
+        or ""
+    ).casefold()
+
+    if (
+        source == "ifct"
+        and nutrient_col
+        in IFCT_MICRONUTRIENT_COLUMNS
+    ):
+        value *= 1000
+
+    return value
+
 
 def _nutrient_score(
     value: float,
     nutrient_col: str,
 ) -> float:
 
-    reference_values = {
-
-        "iron_mg": 18,
-
-        "vitamin_d_mcg": 20,
-
-        "vitamin_b12_mcg": 4,
-
-        "calcium_mg": 1000,
-
-        "folate_mcg": 400,
-
-        "vitamin_a_mcg": 900,
-
-        "vitamin_c_mg": 90,
-
-        "magnesium_mg": 420,
-
-        "zinc_mg": 11,
-
-        "protein_g": 50,
-    }
-
-    reference = reference_values.get(
+    reference = REFERENCE_VALUES.get(
         nutrient_col,
         100,
     )
@@ -402,61 +805,51 @@ def _nutrient_score(
     )
 
 
-# ============================================================
-# RECOMMENDATION SCORE
-# ============================================================
-
 def _recommendation_score(
-    food,
+    food: FoodItem,
     nutrient_col: str,
 ) -> tuple:
 
-    value = float(
-        getattr(
-            food,
-            nutrient_col,
-        )
-        or 0
+    value = _recommendation_nutrient_value(
+        food,
+        nutrient_col,
     )
 
-    category_score = (
-        _food_category_score(
-            food.name
-        )
+    keyword_score = _keyword_match_score(
+        food.name,
+        nutrient_col,
     )
 
-    nutrient_score = (
-        _nutrient_score(
-            value,
-            nutrient_col,
-        )
+    category_score = _food_category_score(
+        food.name,
     )
 
-    quality_score = (
-        food_quality_score(
-            food.name
-        )
+    quality_score = food_quality_score(
+        food.name,
     )
 
-    source_score = (
-        SOURCE_PRIORITY.get(
-            food.source,
-            3,
-        )
+    nutrient_score = _nutrient_score(
+        value,
+        nutrient_col,
     )
 
+    # Practical food relevance comes first.
+    #
+    # This prevents a database product with a high
+    # nutrient number from automatically beating a
+    # normal everyday food.
     return (
+        keyword_score,
         category_score,
         quality_score,
         nutrient_score,
-        -source_score,
-        food.name.lower(),
+        food.name.casefold(),
     )
 
 
-# ============================================================
-# RECOMMENDED FOODS
-# ============================================================
+# ================================================================
+# Recommended foods
+# ================================================================
 
 def get_recommended_foods(
     db: Session,
@@ -464,6 +857,11 @@ def get_recommended_foods(
     nutrient_col: str,
     limit: int = RECOMMENDATIONS_PER_NUTRIENT,
 ):
+    """
+    Returns practical and diverse food recommendations.
+
+    All foods come from the existing FoodItem database.
+    """
 
     restrictions = []
 
@@ -472,10 +870,8 @@ def get_recommended_foods(
         and profile.dietary_restrictions
     ):
 
-        restrictions = (
-            normalize_restrictions(
-                profile.dietary_restrictions.split(",")
-            )
+        restrictions = normalize_restrictions(
+            profile.dietary_restrictions.split(",")
         )
 
     nutrient_field = getattr(
@@ -494,54 +890,66 @@ def get_recommended_foods(
         .all()
     )
 
-    # --------------------------------------------------------
-    # FILTER FOODS
-    # --------------------------------------------------------
+    suitable = []
 
-    candidates = [
+    for food in candidates:
 
-        food
+        if not food.name:
+            continue
 
-        for food in candidates
-
-        if is_good_recommendation_food(
+        if not is_good_recommendation_food(
             food.name
-        )
+        ):
+            continue
 
-        and not _is_unsuitable_recommendation_food(
+        if _is_unsuitable_recommendation_food(
             food.name
-        )
+        ):
+            continue
 
-        and food_matches_restrictions(
+        if not food_matches_restrictions(
             food,
             restrictions,
-        )
+        ):
+            continue
 
+        suitable.append(food)
+
+    # ------------------------------------------------------------
+    # Prefer foods that are specifically useful for this nutrient.
+    # ------------------------------------------------------------
+
+    practical = [
+        food
+        for food in suitable
+        if _keyword_match_score(
+            food.name,
+            nutrient_col,
+        ) > 0
     ]
 
-    # --------------------------------------------------------
-    # SORT FOODS
-    # --------------------------------------------------------
+    if len(practical) >= limit:
+        candidates = practical
+    else:
+        candidates = suitable
 
     candidates.sort(
-
-        key=lambda food: (
-            _recommendation_score(
-                food,
-                nutrient_col,
-            )
+        key=lambda food: _recommendation_score(
+            food,
+            nutrient_col,
         ),
-
         reverse=True,
     )
 
     results = []
 
-    seen_foods = set()
+    seen_database_keys = set()
+    seen_families = set()
 
-    # --------------------------------------------------------
-    # BUILD FINAL RESULTS
-    # --------------------------------------------------------
+    # ------------------------------------------------------------
+    # First pass:
+    # one food per practical family
+    # ------------------------------------------------------------
 
     for food in candidates:
 
@@ -549,19 +957,19 @@ def get_recommended_foods(
             food.name
         )
 
-        if food_key in seen_foods:
+        if food_key in seen_database_keys:
             continue
 
-        seen_foods.add(
-            food_key
+        family = _recommendation_family(
+            food.name
         )
 
-        amount = float(
-            getattr(
-                food,
-                nutrient_col,
-            )
-            or 0
+        if family in seen_families:
+            continue
+
+        amount = _recommendation_nutrient_value(
+            food,
+            nutrient_col,
         )
 
         if amount <= 0:
@@ -570,7 +978,6 @@ def get_recommended_foods(
         results.append(
             {
                 "name": food.name,
-
                 "amount": round(
                     amount,
                     2,
@@ -578,29 +985,39 @@ def get_recommended_foods(
             }
         )
 
+        seen_database_keys.add(
+            food_key
+        )
+
+        seen_families.add(
+            family
+        )
+
         if len(results) >= limit:
             break
+
+    # ------------------------------------------------------------
+    # IMPORTANT:
+    #
+    # We deliberately do NOT fill missing slots with duplicates.
+    #
+    # If there are only 3 genuinely different suitable food
+    # families, return 3.
+    # ------------------------------------------------------------
 
     return results
 
 
-# ============================================================
-# BUILD RECOMMENDATIONS
-# ============================================================
-
 def build_recommendations(
-    db: Session,
-    user_id: int,
-    risk_items: list,
-) -> dict:
+    db,
+    user_id,
+    risk_items,
+):
 
     profile = (
-        db.query(
-            HealthProfile
-        )
+        db.query(HealthProfile)
         .filter(
-            HealthProfile.user_id
-            == user_id
+            HealthProfile.user_id == user_id
         )
         .first()
     )
@@ -608,20 +1025,13 @@ def build_recommendations(
     recommendations = {}
 
     high_risk_items = sorted(
-
         (
             risk
-
             for risk in risk_items
-
             if risk["probability"]
             >= RECOMMENDATION_THRESHOLD
         ),
-
-        key=lambda risk: (
-            risk["probability"]
-        ),
-
+        key=lambda risk: risk["probability"],
         reverse=True,
     )
 
@@ -644,19 +1054,13 @@ def build_recommendations(
     return recommendations
 
 
-# ============================================================
-# CUSTOM ERROR
-# ============================================================
+# ================================================================
+# ML artifact loading
+# ================================================================
 
-class AssessmentError(
-    Exception
-):
+class AssessmentError(Exception):
     pass
 
-
-# ============================================================
-# LOAD ML ARTIFACTS
-# ============================================================
 
 def _load_artifacts():
 
@@ -676,26 +1080,18 @@ def _load_artifacts():
     )
 
     for path in (
-
         model_path,
-
         preprocess_path,
-
         meta_path,
-
     ):
 
         if not path.exists():
 
             raise FileNotFoundError(
-
                 f"Missing model artifact: {path}. "
-
                 "Place deficiency_model_random_forest.joblib, "
-
-                "preprocess.joblib, and meta.json in "
-
-                "backend/app/ml_artifacts/"
+                "preprocess.joblib, and meta.json "
+                "in backend/app/ml_artifacts/"
             )
 
     model = joblib.load(
@@ -707,7 +1103,8 @@ def _load_artifacts():
     )
 
     with open(
-        meta_path
+        meta_path,
+        encoding="utf-8",
     ) as file:
 
         meta = json.load(
@@ -721,15 +1118,15 @@ def _load_artifacts():
     )
 
 
-# ============================================================
-# DIARY SUMMARY
-# ============================================================
+# ================================================================
+# Diary processing
+# ================================================================
 
 def get_diary_summary(
-    db: Session,
-    user_id: int,
-    window_days: int = DEFAULT_WINDOW_DAYS,
-) -> dict:
+    db,
+    user_id,
+    window_days=DEFAULT_WINDOW_DAYS,
+):
 
     since = (
         date.today()
@@ -739,33 +1136,23 @@ def get_diary_summary(
     )
 
     rows = (
-
         db.query(
             DiaryEntry,
             FoodItem,
         )
-
         .join(
             FoodItem,
-
             DiaryEntry.food_item_id
             == FoodItem.id,
         )
-
         .filter(
-
-            DiaryEntry.user_id
-            == user_id,
-
-            DiaryEntry.entry_date
-            >= since,
+            DiaryEntry.user_id == user_id,
+            DiaryEntry.entry_date >= since,
         )
-
         .all()
     )
 
     daily_totals = {}
-
     daily_meals = {}
 
     for entry, food in rows:
@@ -780,9 +1167,7 @@ def get_diary_summary(
         if day not in daily_totals:
 
             daily_totals[day] = {
-
                 col: 0.0
-
                 for col
                 in DIARY_NUTRIENT_COLS
             }
@@ -809,17 +1194,10 @@ def get_diary_summary(
                 value * ratio
             )
 
-    # --------------------------------------------------------
-    # ONLY COMPLETE DAYS
-    # --------------------------------------------------------
-
     complete_days = {
-
         day: totals
-
         for day, totals
         in daily_totals.items()
-
         if REQUIRED_MEALS.issubset(
             daily_meals[day]
         )
@@ -829,28 +1207,17 @@ def get_diary_summary(
         complete_days
     )
 
-    if (
-        distinct_days
-        < MIN_DIARY_DAYS
-    ):
+    if distinct_days < MIN_DIARY_DAYS:
 
         raise AssessmentError(
-
-            f"Need at least {MIN_DIARY_DAYS} "
-
-            "days with breakfast, lunch, snack, "
-
-            f"and dinner logged in the last "
-
-            f"{window_days} days "
-
+            f"Need at least {MIN_DIARY_DAYS} days "
+            "with breakfast, lunch, snack, and dinner "
+            f"logged in the last {window_days} days "
             f"(found {distinct_days} complete days)."
         )
 
     averages = {
-
         col: 0.0
-
         for col
         in DIARY_NUTRIENT_COLS
     }
@@ -859,68 +1226,47 @@ def get_diary_summary(
         complete_days.values()
     ):
 
-        for col in (
-            DIARY_NUTRIENT_COLS
-        ):
+        for col in DIARY_NUTRIENT_COLS:
 
             averages[col] += (
                 day_totals[col]
             )
 
-    for col in (
-        DIARY_NUTRIENT_COLS
-    ):
+    for col in DIARY_NUTRIENT_COLS:
 
-        averages[col] = (
-            averages[col]
-            / distinct_days
+        averages[col] /= (
+            distinct_days
         )
 
     return {
-
         "averages": averages,
-
         "distinct_days": distinct_days,
     }
 
 
-# ============================================================
-# BUILD MODEL FEATURES
-# ============================================================
-
 def build_feature_dict(
-    db: Session,
-    user_id: int,
-    diary_averages: dict,
-) -> dict:
+    db,
+    user_id,
+    diary_averages,
+):
 
     profile = (
-
-        db.query(
-            HealthProfile
-        )
-
+        db.query(HealthProfile)
         .filter(
-            HealthProfile.user_id
-            == user_id
+            HealthProfile.user_id == user_id
         )
-
         .first()
     )
 
     if not profile:
 
         raise AssessmentError(
-
             "Complete your health profile "
-
             "(onboarding) before running an assessment."
         )
 
     features = {
-
         "gender": profile.gender,
-
         "age_years": profile.age,
     }
 
@@ -931,27 +1277,21 @@ def build_feature_dict(
     return features
 
 
-# ============================================================
-# LAB BOOST
-# ============================================================
+# ================================================================
+# Lab results
+# ================================================================
 
 def apply_lab_boost(
-    db: Session,
-    user_id: int,
-    risk_by_label: dict,
-) -> dict:
+    db,
+    user_id,
+    risk_by_label,
+):
 
     labs = (
-
-        db.query(
-            LabResult
-        )
-
+        db.query(LabResult)
         .filter(
-            LabResult.user_id
-            == user_id
+            LabResult.user_id == user_id
         )
-
         .first()
     )
 
@@ -959,23 +1299,15 @@ def apply_lab_boost(
         return risk_by_label
 
     profile = (
-
-        db.query(
-            HealthProfile
-        )
-
+        db.query(HealthProfile)
         .filter(
-            HealthProfile.user_id
-            == user_id
+            HealthProfile.user_id == user_id
         )
-
         .first()
     )
 
     is_female = (
-
         profile is not None
-
         and profile.gender == 2
     )
 
@@ -983,15 +1315,12 @@ def apply_lab_boost(
         risk_by_label
     )
 
-    # Iron / Hemoglobin
-
     if (
         labs.hemoglobin_g_dl
         is not None
     ):
 
         low_hgb = (
-
             labs.hemoglobin_g_dl
             < (
                 12
@@ -1002,108 +1331,88 @@ def apply_lab_boost(
 
         if low_hgb:
 
-            boosted["label_iron"] = max(
-
+            boosted[
+                "label_iron"
+            ] = max(
                 boosted.get(
                     "label_iron",
                     0,
                 ),
-
                 0.75,
             )
 
     if (
-
-        labs.ferritin
-        is not None
-
+        labs.ferritin is not None
         and labs.ferritin < 30
-
     ):
 
-        boosted["label_iron"] = max(
-
+        boosted[
+            "label_iron"
+        ] = max(
             boosted.get(
                 "label_iron",
                 0,
             ),
-
             0.70,
         )
 
-    # Vitamin D
-
     if (
-
         labs.serum_vitamin_d
         is not None
-
         and labs.serum_vitamin_d < 50
-
     ):
 
-        boosted["label_vitamin_d"] = max(
-
+        boosted[
+            "label_vitamin_d"
+        ] = max(
             boosted.get(
                 "label_vitamin_d",
                 0,
             ),
-
             0.65,
         )
 
-    # Vitamin B12
-
     if (
-
         labs.vitamin_b12
         is not None
-
         and labs.vitamin_b12 < 200
-
     ):
 
-        boosted["label_vitamin_b12"] = max(
-
+        boosted[
+            "label_vitamin_b12"
+        ] = max(
             boosted.get(
                 "label_vitamin_b12",
                 0,
             ),
-
             0.60,
         )
 
-    # Calcium
-
     if (
-
-        labs.calcium
-        is not None
-
+        labs.calcium is not None
         and labs.calcium < 8.5
-
     ):
 
-        boosted["label_calcium"] = max(
-
+        boosted[
+            "label_calcium"
+        ] = max(
             boosted.get(
                 "label_calcium",
                 0,
             ),
-
             0.55,
         )
 
     return boosted
 
 
-# ============================================================
-# UI RISK LEVEL
-# ============================================================
+# ================================================================
+# Assessment helpers
+# ================================================================
 
 def ui_level(
-    probability: float,
-) -> str:
+    probability,
+):
 
     if probability > 0.65:
         return "HIGH"
@@ -1114,53 +1423,41 @@ def ui_level(
     return "LOW"
 
 
-# ============================================================
-# WELLNESS SCORE
-# ============================================================
-
 def calculate_wellness_score(
-    probabilities: list[float],
-) -> float:
+    probabilities,
+):
 
     if not probabilities:
 
         raise ValueError(
-            "At least one deficiency probability "
-            "is required"
+            "At least one deficiency probability is required"
         )
 
     average_risk = (
-
-        sum(
-            probabilities
-        )
-
-        / len(
-            probabilities
-        )
+        sum(probabilities)
+        / len(probabilities)
     )
 
     return round(
-        (
-            1 - average_risk
-        ) * 100,
+        (1 - average_risk)
+        * 100,
         1,
     )
 
 
-# ============================================================
-# RUN ASSESSMENT
-# ============================================================
+# ================================================================
+# Main assessment
+# ================================================================
 
 def run_assessment(
-    db: Session,
-    user_id: int,
-    window_days: int = DEFAULT_WINDOW_DAYS,
-) -> dict:
+    db,
+    user_id,
+    window_days=DEFAULT_WINDOW_DAYS,
+):
 
-    # --------------------------------------------------------
-    # LOAD MODEL
-    # --------------------------------------------------------
+    # ------------------------------------------------------------
+    # Load ML artifacts
+    # ------------------------------------------------------------
 
     (
         model,
@@ -1168,59 +1465,41 @@ def run_assessment(
         meta,
     ) = _load_artifacts()
 
-    feature_order = (
-        meta["features"]
-    )
+    feature_order = meta[
+        "features"
+    ]
 
-    label_order = (
-        meta["labels"]
-    )
+    label_order = meta[
+        "labels"
+    ]
 
-    # --------------------------------------------------------
-    # GET DIARY DATA
-    # --------------------------------------------------------
+    # ------------------------------------------------------------
+    # Diary
+    # ------------------------------------------------------------
 
     diary = get_diary_summary(
-
         db,
-
         user_id,
-
         window_days,
     )
 
-    # --------------------------------------------------------
-    # BUILD FEATURES
-    # --------------------------------------------------------
-
-    feature_dict = (
-        build_feature_dict(
-
-            db,
-
-            user_id,
-
-            diary["averages"],
-        )
+    feature_dict = build_feature_dict(
+        db,
+        user_id,
+        diary["averages"],
     )
+
+    # ------------------------------------------------------------
+    # ML prediction
+    # ------------------------------------------------------------
 
     X = pd.DataFrame(
         [feature_dict]
     )[feature_order]
 
-    # --------------------------------------------------------
-    # PREPROCESS
-    # --------------------------------------------------------
-
     X_processed = (
-        preprocess.transform(
-            X
-        )
+        preprocess.transform(X)
     )
-
-    # --------------------------------------------------------
-    # RANDOM FOREST PREDICTION
-    # --------------------------------------------------------
 
     proba_list = (
         model.predict_proba(
@@ -1234,32 +1513,27 @@ def run_assessment(
         label_order
     ):
 
-        risk_by_label[label] = float(
-
+        risk_by_label[
+            label
+        ] = float(
             proba_list[i][0][1]
         )
 
-    # --------------------------------------------------------
-    # OPTIONAL LAB BOOST
-    # --------------------------------------------------------
+    # ------------------------------------------------------------
+    # Optional laboratory boost
+    # ------------------------------------------------------------
 
-    risk_by_label = (
-        apply_lab_boost(
-
-            db,
-
-            user_id,
-
-            risk_by_label,
-        )
+    risk_by_label = apply_lab_boost(
+        db,
+        user_id,
+        risk_by_label,
     )
 
-    # --------------------------------------------------------
-    # BUILD RISK RESULTS
-    # --------------------------------------------------------
+    # ------------------------------------------------------------
+    # Build risk items
+    # ------------------------------------------------------------
 
     risk_items = []
-
     score_probabilities = []
 
     for label in label_order:
@@ -1279,7 +1553,9 @@ def run_assessment(
         )
 
         diary_avg = (
-            diary["averages"].get(
+            diary[
+                "averages"
+            ].get(
                 nutrient_col
             )
         )
@@ -1287,28 +1563,21 @@ def run_assessment(
         low_intake_tag = None
 
         if (
-
             diary_avg is not None
-
             and nutrient_col
             in RDA_THRESHOLDS
-
             and diary_avg
             < RDA_THRESHOLDS[
                 nutrient_col
             ]
-
         ):
 
             nutrient_name = (
-
                 label
-
                 .replace(
                     "label_",
                     "",
                 )
-
                 .replace(
                     "_",
                     " ",
@@ -1320,44 +1589,35 @@ def run_assessment(
             )
 
         risk_items.append(
-
             {
-
                 "label": label,
-
                 "nutrient": (
                     label
-
                     .replace(
                         "label_",
                         "",
                     )
                 ),
-
                 "probability": round(
                     probability,
                     3,
                 ),
-
                 "predicted_deficient": (
                     probability >= 0.5
                 ),
-
                 "ui_percent": round(
                     probability * 100
                 ),
-
                 "ui_level": ui_level(
                     probability
                 ),
-
                 "tag": low_intake_tag,
             }
         )
 
-    # --------------------------------------------------------
-    # WELLNESS SCORE
-    # --------------------------------------------------------
+    # ------------------------------------------------------------
+    # Wellness score
+    # ------------------------------------------------------------
 
     overall_score = (
         calculate_wellness_score(
@@ -1365,39 +1625,27 @@ def run_assessment(
         )
     )
 
-    # --------------------------------------------------------
-    # FOOD RECOMMENDATIONS
+    # ------------------------------------------------------------
+    # Recommendations
     #
-    # This happens AFTER the ML prediction.
-    # It does not change the prediction.
-    # --------------------------------------------------------
+    # This happens AFTER ML prediction and does not
+    # affect the model or wellness score.
+    # ------------------------------------------------------------
 
     recommendations = (
         build_recommendations(
-
             db,
-
             user_id,
-
             risk_items,
         )
     )
 
-    # --------------------------------------------------------
-    # FINAL RESPONSE
-    # --------------------------------------------------------
-
     return {
-
         "features": feature_dict,
-
         "risks": risk_items,
-
         "overall_score": overall_score,
-
-        "diary_days_used": (
-            diary["distinct_days"]
-        ),
-
+        "diary_days_used": diary[
+            "distinct_days"
+        ],
         "recommendations": recommendations,
     }

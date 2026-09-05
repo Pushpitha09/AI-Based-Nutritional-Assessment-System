@@ -1,4 +1,3 @@
-
 import json
 import re
 
@@ -16,10 +15,6 @@ from app.services.food_tags import (
     food_quality_score,
 )
 
-
-# ============================================================
-# MEAL PLAN SETTINGS
-# ============================================================
 
 MEALS = (
     "breakfast",
@@ -42,19 +37,6 @@ FOCUS_LIMIT = 4
 FOODS_PER_MEAL = 2
 
 
-# ============================================================
-# NUTRIENT NORMALIZATION TARGETS
-# ============================================================
-
-# These values are used ONLY for recommendation ranking.
-# They do NOT affect:
-#
-# - Random Forest model
-# - ML training
-# - assessment probabilities
-# - deficiency prediction
-# - wellness score
-
 NUTRIENT_TARGETS = {
     "iron": 18.0,
     "calcium": 1000.0,
@@ -69,19 +51,199 @@ NUTRIENT_TARGETS = {
 }
 
 
-# ============================================================
-# FOOD NAME HELPERS
-# ============================================================
+# -------------------------------------------------------------------
+# Meal category preferences
+# -------------------------------------------------------------------
 
-def _food_family(name: str) -> str:
-    """
-    Create a simplified food family name.
+MEAL_KEYWORDS = {
 
-    This helps prevent the same food from appearing repeatedly
-    on the same day.
-    """
+    "breakfast": (
+        "oat",
+        "oatmeal",
+        "ragi",
+        "finger millet",
+        "cereal",
+        "poha",
+        "flattened rice",
+        "idli",
+        "dosa",
+        "upma",
+        "bread",
+        "roti",
+        "chapati",
+        "atta",
+        "banana",
+        "apple",
+        "papaya",
+        "orange",
+        "guava",
+        "milk",
+        "soymilk",
+        "soy milk",
+        "curd",
+        "yogurt",
+        "yoghurt",
+        "egg",
+        "tofu",
+    ),
 
-    primary = name.split(",", 1)[0].strip().casefold()
+    "lunch": (
+        "rice",
+        "brown rice",
+        "roti",
+        "chapati",
+        "wheat",
+        "atta",
+        "lentil",
+        "dal",
+        "chickpea",
+        "chana",
+        "rajma",
+        "kidney bean",
+        "bean",
+        "peas",
+        "green gram",
+        "moong",
+        "tofu",
+        "soybean",
+        "spinach",
+        "amaranth",
+        "carrot",
+        "tomato",
+        "capsicum",
+        "broccoli",
+        "vegetable",
+    ),
+
+    "snack": (
+        "banana",
+        "apple",
+        "orange",
+        "guava",
+        "papaya",
+        "mango",
+        "fruit",
+        "almond",
+        "cashew",
+        "walnut",
+        "sesame",
+        "pumpkin seed",
+        "chia",
+        "flaxseed",
+        "chickpea",
+        "chana",
+        "roasted",
+        "curd",
+        "yogurt",
+        "yoghurt",
+        "soymilk",
+        "soy milk",
+        "milk",
+        "oat",
+    ),
+
+    "dinner": (
+        "rice",
+        "brown rice",
+        "roti",
+        "chapati",
+        "wheat",
+        "atta",
+        "lentil",
+        "dal",
+        "chickpea",
+        "chana",
+        "rajma",
+        "kidney bean",
+        "bean",
+        "peas",
+        "green gram",
+        "moong",
+        "tofu",
+        "soybean",
+        "spinach",
+        "amaranth",
+        "carrot",
+        "tomato",
+        "capsicum",
+        "broccoli",
+        "vegetable",
+    ),
+}
+
+
+UNSUITABLE_MEAL_TERMS = (
+    " raw",
+    ",raw",
+    "raw,",
+    "liver",
+    "kidney",
+    "gizzard",
+    "heart",
+    "tongue",
+    "tripe",
+    "brain",
+    "giblet",
+    "variety meat",
+    "by-product",
+    "liverwurst",
+    "braunschweiger",
+    "liver sausage",
+    "liver cheese",
+    "pate",
+    "powder",
+    "dry mix",
+    "unprepared",
+    "not reconstituted",
+    "mix,",
+    "spices,",
+    "paprika",
+    "marjoram",
+    "spearmint",
+    "chives",
+    "infant",
+    "babyfood",
+    "baby food",
+    "toddler",
+    "seal",
+    "whale",
+    "baking powder",
+    "leavening",
+    "table salt",
+    "salt substitute",
+    "seasoning",
+    "flavoring",
+    "flavouring",
+    "food coloring",
+    "food colouring",
+    "extract",
+    "yeast extract",
+    "margarine",
+    "whey, acid",
+    "caramel-coated",
+    "confection",
+    "heavy syrup",
+    "syrup, solids",
+    "salad dressing",
+    "pie",
+    "pudding",
+    "candy",
+    "candies",
+)
+
+
+# -------------------------------------------------------------------
+# Helpers
+# -------------------------------------------------------------------
+
+def _food_family(name):
+
+    primary = (
+        name
+        .split(",", 1)[0]
+        .strip()
+        .casefold()
+    )
 
     return re.sub(
         r"[^a-z0-9]+",
@@ -90,10 +252,7 @@ def _food_family(name: str) -> str:
     ).strip()
 
 
-def _display_food_name(name: str) -> str:
-    """
-    Clean unnecessary catalog metadata from food names.
-    """
+def _display_food_name(name):
 
     cleaned = re.sub(
         r"\([^)]*food distribution program[^)]*\)",
@@ -129,119 +288,55 @@ def _display_food_name(name: str) -> str:
     return ", ".join(segments)
 
 
-# ============================================================
-# FOOD SUITABILITY FILTERING
-# ============================================================
+def _keyword_match(name, keywords):
 
-def _is_suitable_meal_food(food) -> bool:
-    """
-    Check whether a food is suitable to show in a normal meal plan.
+    text = (name or "").casefold()
 
-    This removes:
-    - raw foods
-    - raw meat
-    - organs
-    - giblets
-    - liver
-    - powders
-    - spices
-    - dry mixes
-    - infant foods
-    - highly unsuitable catalog items
-    """
+    score = 0
 
-    name = (food.name or "").lower()
+    for keyword in keywords:
 
-    # Use the general recommendation quality filter first.
-    if not is_good_recommendation_food(food.name):
+        pattern = (
+            r"\b"
+            + re.escape(
+                keyword.casefold()
+            )
+            + r"\b"
+        )
+
+        if re.search(
+            pattern,
+            text,
+        ):
+            score += 1
+
+    return score
+
+
+def _is_suitable_meal_food(food):
+
+    name = (
+        food.name or ""
+    ).casefold()
+
+    if not is_good_recommendation_food(
+        food.name
+    ):
         return False
-
-    unsuitable_terms = [
-
-        # Raw / uncooked foods
-        " raw",
-        ",raw",
-
-        # Organ meats
-        "liver",
-        "kidney",
-        "gizzard",
-        "heart",
-        "tongue",
-        "tripe",
-        "brain",
-
-        # Giblets / by-products
-        "giblet",
-        "variety meat",
-        "by-product",
-
-        # Processed organ products
-        "liverwurst",
-        "braunschweiger",
-        "liver sausage",
-        "liver cheese",
-        "pate",
-
-        # Powders and mixes
-        "powder",
-        "dry mix",
-        "unprepared",
-        "not reconstituted",
-        "mix,",
-
-        # Spices and herbs
-        "spices,",
-        "paprika",
-        "marjoram",
-        "spearmint",
-        "chives",
-
-        # Infant foods
-        "infant",
-        "babyfood",
-        "baby food",
-        "toddler",
-
-        # Strange animal foods
-        "seal",
-        "whale",
-
-        # Ingredients that should not be meals
-        "baking powder",
-        "leavening",
-        "table salt",
-        "salt substitute",
-        "seasoning",
-        "flavoring",
-        "flavouring",
-        "food coloring",
-        "food colouring",
-        "extract",
-        "yeast extract",
-
-        # Other unsuitable items
-        "margarine",
-        "whey, acid",
-    ]
 
     if any(
         term in name
-        for term in unsuitable_terms
+        for term in UNSUITABLE_MEAL_TERMS
     ):
         return False
 
     return True
 
 
-# ============================================================
-# DIETARY RESTRICTION FILTERING
-# ============================================================
-
-def _matches_restrictions(food, restrictions):
-    """
-    Check whether a FoodItem matches the user's dietary restrictions.
-    """
+def _matches_restrictions(
+    food,
+    restrictions,
+):
 
     return food_matches_restrictions(
         food,
@@ -249,14 +344,7 @@ def _matches_restrictions(food, restrictions):
     )
 
 
-# ============================================================
-# NUTRIENT HELPERS
-# ============================================================
-
-def _get_nutrient_column(nutrient: str) -> str:
-    """
-    Map nutrient names to FoodItem database columns.
-    """
+def _get_nutrient_column(nutrient):
 
     mapping = {
         "iron": "iron_mg",
@@ -274,67 +362,95 @@ def _get_nutrient_column(nutrient: str) -> str:
     return mapping.get(nutrient)
 
 
+# Same IFCT handling as recommendation service.
+IFCT_MICRONUTRIENT_COLUMNS = {
+    "iron_mg",
+    "calcium_mg",
+    "vitamin_d_mcg",
+    "vitamin_b12_mcg",
+    "folate_mcg",
+    "vitamin_a_mcg",
+    "vitamin_c_mg",
+    "magnesium_mg",
+    "zinc_mg",
+}
+
+
+def _nutrient_value(
+    food,
+    column,
+):
+
+    value = float(
+        getattr(
+            food,
+            column,
+            0,
+        )
+        or 0
+    )
+
+    value = max(
+        value,
+        0,
+    )
+
+    source = str(
+        getattr(
+            food,
+            "source",
+            "",
+        )
+        or ""
+    ).casefold()
+
+    if (
+        source == "ifct"
+        and column
+        in IFCT_MICRONUTRIENT_COLUMNS
+    ):
+        value *= 1000
+
+    return value
+
+
 def get_normalized_nutrient_score(
     food,
     nutrients,
-) -> float:
-    """
-    Calculate a normalized nutrient score.
-
-    Different nutrients use different units and ranges.
-
-    For example:
-
-    Calcium:
-        1000 mg target
-
-    Vitamin B12:
-        2.4 mcg target
-
-    Without normalization, raw values can cause one nutrient
-    to dominate recommendations.
-
-    This function compares each nutrient value against its
-    reference target.
-
-    IMPORTANT:
-    This function is ONLY used for food recommendation ranking.
-    It does NOT affect the ML assessment model.
-    """
+):
 
     score = 0.0
 
     for nutrient in nutrients:
 
-        target = NUTRIENT_TARGETS.get(nutrient)
+        target = NUTRIENT_TARGETS.get(
+            nutrient
+        )
 
-        column = _get_nutrient_column(nutrient)
+        column = _get_nutrient_column(
+            nutrient
+        )
 
-        if not target or not column:
+        if (
+            not target
+            or not column
+        ):
             continue
 
-        value = float(
-            getattr(
-                food,
-                column,
-                0,
-            )
-            or 0
+        value = _nutrient_value(
+            food,
+            column,
         )
 
-        # Ignore invalid negative values.
-        value = max(
-            value,
-            0,
+        normalized_value = (
+            value / target
         )
 
-        normalized_value = value / target
-
-        # Prevent a single extremely large value from
-        # completely dominating the recommendation.
+        # Don't allow one unusually large
+        # database value to dominate everything.
         normalized_value = min(
             normalized_value,
-            2.0,
+            1.0,
         )
 
         score += normalized_value
@@ -344,35 +460,39 @@ def get_normalized_nutrient_score(
 
 def _meal_food_score(
     food,
+    meal,
     focus_nutrients,
-) -> float:
-    """
-    Combine nutrient contribution with a small preference
-    for recognizable, normal foods.
+):
 
-    Nutrient score remains the main factor.
-    """
-
-    nutrient_score = get_normalized_nutrient_score(
-        food,
-        focus_nutrients,
+    category_score = _keyword_match(
+        food.name,
+        MEAL_KEYWORDS[meal],
     )
 
-    quality_bonus = food_quality_score(
-        food.name,
-    ) * 0.05
+    nutrient_score = (
+        get_normalized_nutrient_score(
+            food,
+            focus_nutrients,
+        )
+    )
 
-    return nutrient_score + quality_bonus
+    quality_bonus = (
+        food_quality_score(
+            food.name
+        )
+        * 0.05
+    )
+
+    return (
+        category_score * 3
+        + nutrient_score
+        + quality_bonus
+    )
 
 
-# ============================================================
-# ASSESSMENT FOCUS NUTRIENTS
-# ============================================================
-
-def _focus_nutrients(assessment):
-    """
-    Get the highest-risk nutrients from the latest assessment.
-    """
+def _focus_nutrients(
+    assessment,
+):
 
     risks = json.loads(
         assessment.risks_json
@@ -393,7 +513,9 @@ def _focus_nutrients(assessment):
 
         return [
             risk["nutrient"]
-            for risk in focused[:FOCUS_LIMIT]
+            for risk in focused[
+                :FOCUS_LIMIT
+            ]
         ]
 
     sorted_risks = sorted(
@@ -404,27 +526,16 @@ def _focus_nutrients(assessment):
 
     return [
         risk["nutrient"]
-        for risk in sorted_risks[:FOCUS_LIMIT]
+        for risk in sorted_risks[
+            :FOCUS_LIMIT
+        ]
     ]
 
-
-# ============================================================
-# SAVED PLAN VALIDATION
-# ============================================================
 
 def _saved_plan_is_valid(
     plan,
     restrictions,
-) -> bool:
-    """
-    Check whether an existing meal plan is still valid.
-
-    The saved plan is regenerated when:
-
-    - dietary restrictions changed
-    - an unsuitable food exists
-    - a food no longer matches restrictions
-    """
+):
 
     for day in plan:
 
@@ -450,7 +561,7 @@ def _saved_plan_is_valid(
                     "TempFood",
                     (),
                     {
-                        "name": source_name,
+                        "name": source_name
                     },
                 )()
 
@@ -468,24 +579,15 @@ def _saved_plan_is_valid(
     return True
 
 
-# ============================================================
-# CANDIDATE FOOD COLLECTION
-# ============================================================
-
 def _get_candidate_foods(
     db,
     restrictions,
 ):
-    """
-    Get foods that:
 
-    1. Match dietary restrictions
-    2. Are suitable normal meal foods
-    """
-
-    all_foods = db.query(
-        FoodItem
-    ).all()
+    all_foods = (
+        db.query(FoodItem)
+        .all()
+    )
 
     candidates = []
 
@@ -502,25 +604,19 @@ def _get_candidate_foods(
         ):
             continue
 
-        candidates.append(
-            food
-        )
+        candidates.append(food)
 
     return candidates
 
 
-# ============================================================
-# MEAL PLAN GENERATION
-# ============================================================
+# -------------------------------------------------------------------
+# Meal plan generation
+# -------------------------------------------------------------------
 
 def generate_meal_plan(
-    db: Session,
-    user_id: int,
-) -> dict:
-
-    # --------------------------------------------------------
-    # Get latest assessment
-    # --------------------------------------------------------
+    db,
+    user_id,
+):
 
     assessment = (
         db.query(Assessment)
@@ -538,10 +634,6 @@ def generate_meal_plan(
         raise ValueError(
             "Run an assessment before generating a meal plan."
         )
-
-    # --------------------------------------------------------
-    # Get user dietary restrictions
-    # --------------------------------------------------------
 
     profile = (
         db.query(HealthProfile)
@@ -564,17 +656,9 @@ def generate_meal_plan(
             )
         )
 
-    # --------------------------------------------------------
-    # Get focus nutrients from assessment
-    # --------------------------------------------------------
-
     focus_nutrients = _focus_nutrients(
         assessment
     )
-
-    # --------------------------------------------------------
-    # Get suitable foods
-    # --------------------------------------------------------
 
     candidates = _get_candidate_foods(
         db,
@@ -584,68 +668,67 @@ def generate_meal_plan(
     if len(candidates) < FOODS_PER_MEAL:
 
         raise ValueError(
-            "Not enough suitable foods match your dietary "
-            "restrictions to build a meal plan."
+            "Not enough suitable foods match your dietary restrictions "
+            "to build a meal plan."
         )
 
-    # --------------------------------------------------------
-    # Rank foods using NORMALIZED nutrient scoring
-    # --------------------------------------------------------
+    # ---------------------------------------------------------------
+    # Rank foods separately for each meal.
+    # ---------------------------------------------------------------
 
-    ranked = sorted(
-        candidates,
-        key=lambda food: _meal_food_score(
-            food,
-            focus_nutrients,
-        ),
-        reverse=True,
-    )
+    meal_rankings = {}
 
-    # Keep a reasonably large pool for variety.
-    pool_size = min(
-        len(ranked),
-        max(
-            80,
-            FOODS_PER_MEAL
-            * len(MEALS)
-            * 7,
-        ),
-    )
+    for meal in MEALS:
 
-    pool = ranked[:pool_size]
-
-    # --------------------------------------------------------
-    # Build seven-day meal plan
-    # --------------------------------------------------------
+        meal_rankings[meal] = sorted(
+            candidates,
+            key=lambda food: _meal_food_score(
+                food,
+                meal,
+                focus_nutrients,
+            ),
+            reverse=True,
+        )
 
     plan = []
+
+    # Foods/families used recently.
+    # This helps prevent the same food appearing every day.
+    recent_families = []
 
     for day_index, day in enumerate(DAYS):
 
         used_today = set()
-
-        used_families = set()
+        used_families_today = set()
 
         meals = []
 
         for meal_index, meal in enumerate(MEALS):
 
+            ranked = meal_rankings[meal]
+
             foods = []
 
+            # Deterministic rotation through the ranked list.
             start = (
-                day_index * 7
-                + meal_index * 5
-            ) % len(pool)
-
-            ordered_pool = (
-                pool[start:]
-                + pool[:start]
+                day_index * 5
+                + meal_index * 7
+            ) % max(
+                len(ranked),
+                1,
             )
 
-            # First pass:
-            # avoid duplicate food families on the same day.
+            ordered = (
+                ranked[start:]
+                + ranked[:start]
+            )
 
-            for food in ordered_pool:
+            # -------------------------------------------------------
+            # First pass:
+            # category match + no recent repetition
+            # -------------------------------------------------------
+
+            for food in ordered:
 
                 family = _food_family(
                     food.name
@@ -654,7 +737,19 @@ def generate_meal_plan(
                 if food.id in used_today:
                     continue
 
-                if family in used_families:
+                if family in used_families_today:
+                    continue
+
+                # Don't use the same family too frequently.
+                if family in recent_families:
+                    continue
+
+                category_match = _keyword_match(
+                    food.name,
+                    MEAL_KEYWORDS[meal],
+                )
+
+                if category_match == 0:
                     continue
 
                 foods.append(
@@ -672,22 +767,42 @@ def generate_meal_plan(
                     food.id
                 )
 
-                used_families.add(
+                used_families_today.add(
                     family
                 )
+
+                recent_families.append(
+                    family
+                )
+
+                if len(
+                    recent_families
+                ) > 12:
+
+                    recent_families.pop(
+                        0
+                    )
 
                 if len(foods) == FOODS_PER_MEAL:
                     break
 
+            # -------------------------------------------------------
             # Second pass:
-            # If not enough foods are available, allow another
-            # family variant but still never repeat the same ID.
+            # allow foods used recently if necessary
+            # -------------------------------------------------------
 
             if len(foods) < FOODS_PER_MEAL:
 
-                for food in ordered_pool:
+                for food in ordered:
+
+                    family = _food_family(
+                        food.name
+                    )
 
                     if food.id in used_today:
+                        continue
+
+                    if family in used_families_today:
                         continue
 
                     foods.append(
@@ -703,6 +818,10 @@ def generate_meal_plan(
 
                     used_today.add(
                         food.id
+                    )
+
+                    used_families_today.add(
+                        family
                     )
 
                     if len(foods) == FOODS_PER_MEAL:
@@ -722,14 +841,18 @@ def generate_meal_plan(
             }
         )
 
-    # --------------------------------------------------------
-    # Replace old meal plan
-    # --------------------------------------------------------
+    # ---------------------------------------------------------------
+    # Save latest plan
+    # ---------------------------------------------------------------
 
-    db.query(MealPlan).filter(
-        MealPlan.user_id == user_id
-    ).delete(
-        synchronize_session=False
+    (
+        db.query(MealPlan)
+        .filter(
+            MealPlan.user_id == user_id
+        )
+        .delete(
+            synchronize_session=False
+        )
     )
 
     record = MealPlan(
@@ -743,23 +866,13 @@ def generate_meal_plan(
         ),
     )
 
-    db.add(
-        record
-    )
-
+    db.add(record)
     db.commit()
-
-    db.refresh(
-        record
-    )
-
-    # --------------------------------------------------------
-    # Return meal plan
-    # --------------------------------------------------------
+    db.refresh(record)
 
     return {
         "id": record.id,
-        "assessment_id": assessment.id,
+        "assessment_id": record.assessment_id,
         "dietary_restrictions": restrictions,
         "focus_nutrients": focus_nutrients,
         "created_at": record.created_at,
@@ -767,13 +880,13 @@ def generate_meal_plan(
     }
 
 
-# ============================================================
-# GET LATEST MEAL PLAN
-# ============================================================
+# -------------------------------------------------------------------
+# Get latest plan
+# -------------------------------------------------------------------
 
 def get_latest_meal_plan(
-    db: Session,
-    user_id: int,
+    db,
+    user_id,
 ):
 
     record = (
@@ -788,12 +901,7 @@ def get_latest_meal_plan(
     )
 
     if not record:
-
         return None
-
-    # --------------------------------------------------------
-    # Get current dietary restrictions
-    # --------------------------------------------------------
 
     profile = (
         db.query(HealthProfile)
@@ -810,15 +918,19 @@ def get_latest_meal_plan(
         and profile.dietary_restrictions
     ):
 
-        current_restrictions = normalize_restrictions(
-            profile.dietary_restrictions.split(
-                ","
+        current_restrictions = (
+            normalize_restrictions(
+                profile.dietary_restrictions.split(
+                    ","
+                )
             )
         )
 
-    saved_restrictions = normalize_restrictions(
-        record.dietary_restrictions.split(
-            ","
+    saved_restrictions = (
+        normalize_restrictions(
+            record.dietary_restrictions.split(
+                ","
+            )
         )
     )
 
@@ -826,11 +938,9 @@ def get_latest_meal_plan(
         record.plan_json
     )
 
-    # --------------------------------------------------------
-    # Regenerate if restrictions changed or old plan contains
-    # unsuitable foods.
-    # --------------------------------------------------------
-
+    # Regenerate automatically if the user's
+    # dietary preferences have changed or
+    # the saved plan contains an unsuitable food.
     if (
         saved_restrictions
         != current_restrictions
@@ -844,10 +954,6 @@ def get_latest_meal_plan(
             db,
             user_id,
         )
-
-    # --------------------------------------------------------
-    # Get assessment for focus nutrients
-    # --------------------------------------------------------
 
     assessment = (
         db.query(Assessment)
@@ -863,13 +969,18 @@ def get_latest_meal_plan(
         "assessment_id": record.assessment_id,
         "dietary_restrictions": [
             item.strip()
-            for item in record.dietary_restrictions.split(
+            for item
+            in record.dietary_restrictions.split(
                 ","
             )
             if item.strip()
         ],
-        "focus_nutrients": _focus_nutrients(
-            assessment
+        "focus_nutrients": (
+            _focus_nutrients(
+                assessment
+            )
+            if assessment
+            else []
         ),
         "created_at": record.created_at,
         "days": saved_plan,
